@@ -1,0 +1,210 @@
+/* Custom Styles */
+body {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.card {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+}
+
+.card-header {
+    border-radius: 12px 12px 0 0 !important;
+}
+
+.upload-section {
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+.border-dashed {
+    border: 3px dashed #0d6efd;
+}
+
+.upload-area {
+    cursor: pointer;
+    padding: 40px 20px;
+    transition: all 0.3s;
+}
+
+.upload-area:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+    transform: translateY(-2px);
+}
+
+.upload-area.drag-over {
+    background-color: rgba(13, 110, 253, 0.1);
+    border-color: #0a58ca;
+}
+
+.progress {
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    transition: width 0.5s ease;
+}
+
+.status-badge {
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 5px;
+    display: inline-block;
+}
+
+.states-container {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.state-item {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    border-left: 4px solid #0d6efd;
+    transition: all 0.2s;
+}
+
+.state-item:hover {
+    transform: translateX(5px);
+    background: #e9ecef;
+}
+
+.state-stats {
+    font-size: 11px;
+    color: #6c757d;
+}
+
+.state-numbers {
+    font-size: 12px;
+    margin-top: 5px;
+    color: #495057;
+}
+
+.bg-telegram {
+    background-color: #0088cc !important;
+}
+
+.btn-telegram {
+    background-color: #0088cc;
+    color: white;
+    border: none;
+}
+
+.btn-telegram:hover {
+    background-color: #0077b5;
+    color: white;
+}
+
+/* Telegram report status */
+.telegram-step {
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    background: #f8f9fa;
+}
+
+.telegram-step.completed {
+    background: #d1e7dd;
+    border-left: 4px solid #198754;
+}
+
+.telegram-step.failed {
+    background: #f8d7da;
+    border-left: 4px solid #dc3545;
+}
+
+.telegram-step.processing {
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .card-body {
+        padding: 15px;
+    }
+    
+    h1 {
+        font-size: 1.8rem;
+    }
+    
+    .upload-area {
+        padding: 20px 10px;
+    }
+    
+    .state-item {
+        padding: 8px;
+    }
+    
+    .states-container {
+        max-height: 300px;
+    }
+}
+
+/* Scrollbar styling */
+.states-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.states-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.states-container::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 3px;
+}
+
+.states-container::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Animation for processing */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.processing {
+    animation: pulse 1.5s infinite;
+}
+
+/* Badge colors */
+.badge-state {
+    background-color: #6f42c1;
+    color: white;
+}
+
+.badge-clean {
+    background-color: #28a745;
+    color: white;
+}
+
+.badge-dnc {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* Table styling */
+.table-responsive {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.table thead th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
+}
