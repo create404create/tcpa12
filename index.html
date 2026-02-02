@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>USA Phone Validator - Fast Processing</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container mt-4">
+        <!-- Header -->
+        <div class="text-center mb-4">
+            <h1 class="text-primary">
+                <i class="fas fa-bolt"></i> Fast USA Phone Validator
+            </h1>
+            <p class="text-muted">Instant validation & organization by state | Auto Telegram Report</p>
+        </div>
+
+        <!-- Main Card -->
+        <div class="card shadow-lg">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">
+                    <i class="fas fa-file-upload me-2"></i>Upload Phone Numbers File
+                </h4>
+                <span class="badge bg-light text-primary" id="telegramStatus">
+                    <i class="fab fa-telegram"></i> Auto-Send Enabled
+                </span>
+            </div>
+            
+            <div class="card-body">
+                <!-- Upload Section -->
+                <div class="upload-section text-center p-4 mb-4 border-dashed">
+                    <div class="upload-area" id="uploadArea">
+                        <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+                        <h4>Drag & Drop Your .txt File</h4>
+                        <p class="text-muted">Any size accepted | One number per line</p>
+                        <input type="file" id="fileInput" accept=".txt" class="d-none">
+                        <button class="btn btn-primary btn-lg" onclick="document.getElementById('fileInput').click()">
+                            <i class="fas fa-upload me-2"></i>Select File
+                        </button>
+                    </div>
+                </div>
+
+                <!-- File Info -->
+                <div id="fileInfo" class="alert alert-info d-none">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="fas fa-file me-2"></i>
+                            <span id="fileName">No file selected</span>
+                        </div>
+                        <div>
+                            <span id="fileSize" class="badge bg-secondary"></span>
+                            <span id="fileCount" class="badge bg-info ms-2"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Processing Options -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="removePlusOne" checked>
+                            <label class="form-check-label" for="removePlusOne">
+                                <i class="fas fa-minus-circle me-1"></i> Remove +1 prefix
+                            </label>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="enableDNC" checked>
+                            <label class="form-check-label" for="enableDNC">
+                                <i class="fas fa-ban me-1"></i> Enable DNC Check (Slow)
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <div class="alert alert-warning py-2">
+                            <i class="fas fa-info-circle me-1"></i>
+                            <small>DNC check may take time. Validation is instant.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Process Button -->
+                <div class="text-center mb-4">
+                    <button id="processBtn" class="btn btn-success btn-lg px-5" onclick="startProcessing()" disabled>
+                        <i class="fas fa-play-circle me-2"></i>Start Processing
+                    </button>
+                    <div class="mt-2">
+                        <small class="text-muted">
+                            <i class="fab fa-telegram me-1"></i> File will auto-send to Telegram
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Progress Section -->
+                <div class="progress-section mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Processing Progress</span>
+                        <span id="progressText">0%</span>
+                    </div>
+                    <div class="progress mb-3" style="height: 20px;">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                             style="width: 0%"></div>
+                    </div>
+                    
+                    <div class="row text-center">
+                        <div class="col-md-4">
+                            <small class="text-muted">Validation</small>
+                            <div id="validationStatus" class="status-badge badge bg-success">Ready</div>
+                        </div>
+                        <div class="col-md-4">
+                            <small class="text-muted">DNC Check</small>
+                            <div id="dncStatus" class="status-badge badge bg-secondary">Not Started</div>
+                        </div>
+                        <div class="col-md-4">
+                            <small class="text-muted">Telegram</small>
+                            <div id="telegramSendStatus" class="status-badge badge bg-secondary">Waiting</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Section -->
+                <div id="resultsSection" class="d-none">
+                    <h4 class="mb-3"><i class="fas fa-chart-bar me-2"></i>Instant Validation Results</h4>
+                    
+                    <!-- Summary Cards -->
+                    <div class="row mb-4">
+                        <div class="col-md-3 col-6 mb-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h6 class="text-muted">Total</h6>
+                                    <h2 id="totalCount" class="text-dark">0</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6 mb-3">
+                            <div class="card text-center bg-success text-white">
+                                <div class="card-body">
+                                    <h6>Valid</h6>
+                                    <h2 id="validCount">0</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6 mb-3">
+                            <div class="card text-center bg-danger text-white">
+                                <div class="card-body">
+                                    <h6>Invalid</h6>
+                                    <h2 id="invalidCount">0</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6 mb-3">
+                            <div class="card text-center bg-primary text-white">
+                                <div class="card-body">
+                                    <h6>States</h6>
+                                    <h2 id="statesCount">0</h2>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- States Distribution (INSTANT) -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-map-marked-alt me-2"></i>Numbers by State (Instant)</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="statesDistribution" class="states-container"></div>
+                        </div>
+                    </div>
+
+                    <!-- DNC Processing Status -->
+                    <div id="dncProcessingSection" class="card mb-4 d-none">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="mb-0"><i class="fas fa-spinner fa-spin me-2"></i>DNC Check in Progress</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 id="dncProgressText">Checking DNC status...</h6>
+                                    <div class="progress mt-2" style="height: 10px; width: 300px;">
+                                        <div id="dncProgressBar" class="progress-bar bg-warning" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <span id="dncCheckedCount" class="badge bg-info">0</span>
+                                    <span class="text-muted ms-2">of</span>
+                                    <span id="dncTotalCount" class="badge bg-secondary ms-2">0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Download Section -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0"><i class="fas fa-download me-2"></i>Download Results</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <h6><i class="fas fa-file-text me-2"></i>State-wise Files</h6>
+                                    <div id="stateDownloadButtons" class="d-flex flex-wrap gap-2 mb-3"></div>
+                                    
+                                    <h6><i class="fas fa-list me-2"></i>Category Files</h6>
+                                    <div id="categoryDownloadButtons" class="d-flex flex-wrap gap-2"></div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card h-100">
+                                        <div class="card-body text-center">
+                                            <h6><i class="fas fa-archive me-2"></i>Bulk Download</h6>
+                                            <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="downloadAllFiles()">
+                                                <i class="fas fa-file-archive me-1"></i>Download All as ZIP
+                                            </button>
+                                            <small class="text-muted">Includes all state files</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Results Table -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-table me-2"></i>Valid Numbers Preview</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive" style="max-height: 400px;">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Original</th>
+                                            <th>Cleaned</th>
+                                            <th>State</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="resultsTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card-footer text-muted">
+                <div class="row">
+                    <div class="col-md-6">
+                        <small>
+                            <i class="fas fa-bolt me-1"></i> Instant validation | 
+                            <i class="fas fa-clock me-1"></i> DNC check takes time
+                        </small>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <small id="telegramInfo">
+                            <i class="fab fa-telegram me-1"></i> File auto-sends to Telegram
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Telegram Report Status -->
+        <div class="card mt-4 d-none" id="telegramReportCard">
+            <div class="card-header bg-telegram text-white">
+                <h5 class="mb-0"><i class="fab fa-telegram me-2"></i>Telegram Report Status</h5>
+            </div>
+            <div class="card-body">
+                <div id="telegramReportDetails"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="states-data.js"></script>
+    <script src="dnc-checker.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
